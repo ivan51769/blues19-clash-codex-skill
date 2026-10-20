@@ -9,6 +9,7 @@ node_modules/
 *.bin
 **/.clash-codex-backups/
 **/.clash-codex-transactions/
+**/.clash-codex-actions/
 **/.codex-proxy-backups/
 launcher-state/
 **/.package-manifest.json

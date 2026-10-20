@@ -25,6 +25,7 @@ FILES = (
     'scripts/install_skill.py',
     'scripts/configure.py',
     'scripts/codex_proxy.py',
+    'scripts/startup_check.py',
     'assets/launch_codex.py',
 )
 

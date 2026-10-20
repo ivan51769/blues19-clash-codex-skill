@@ -1,6 +1,6 @@
 {
   "name": "blues19-clash-codex-skill",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Safe country auto-selection and name-based <=1x filtering for Codex/OpenAI in Clash rule mode",
   "license": "MIT",

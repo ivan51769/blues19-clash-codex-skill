@@ -1,6 +1,6 @@
 ---
 name: clash-codex-optimizer
-description: Configure Codex proxy ports and Clash country routing together. Diagnose global-mode-only connectivity, detect local HTTP/mixed ports, create a process-scoped Codex proxy launcher, install country auto-selection groups with <=1x name-label filtering, and back up or restore both. Use for workspace-settings errors, Codex proxy settings, country switching, and rule-mode routing.
+description: Configure Codex proxy ports and Clash country routing together; diagnose desktop and Computer Use startup problems without false readiness claims. Detect HTTP/mixed ports, install process-scoped launchers and <=1x country groups, and optionally perform one authorized graceful restart with fresh-log checks. Use for workspace errors, Computer Use initialization skipped, proxy settings, country switching, and rule-mode routing.
 ---
 
 # Codex 代理端口 + Clash 国家分流：一起执行
@@ -66,7 +66,31 @@ python -I "<skill-dir>/scripts/configure.py" --clash-dir "<Clash-data-dir>" --co
 6. 分别验证后端代理环境、GUI 请求代理链与 Codex 工作区加载。无凭据 API 的 401 只能证明抵达服务；403/challenge 不是恢复证据。不自动发真实聊天/收费 API 请求。
 7. 报告四个不同状态：文件已配置、Clash 已重新应用、Codex 已从新入口启动、工作区已恢复。无法不重启就完成的验证明确写出。
 
-## 5. 两项一起回滚
+## 5. Computer Use 初始化跳过/超时：一起诊断、一次授权修复
+
+**不要把直连网络探测作为 Computer Use 检查的前置闸门。** 直连超时不等于能力不可用，不因此跳过初始化状态检查；也不把截图或另一个助手的推断当成原始错误证据。
+
+1. 仅在明确的 Codex **桌面 Logs 目录**中检查必要启动事件，不读账号、cookie、认证、对话或 session 文件。区分桌面请求超时、功能配置 bootstrap 超时、本地 stdio 后端连接与实际 Computer Use 能力。
+2. 当前已知日志中，`windows_core_runtime_component_resolved` 的 `cua-swift-helper` 只表示组件解析；通用插件同步/跳过、`gate-disabled`、窗口出现和后端初始化成功都不是 Computer Use 已就绪/被禁用的证据。无明确能力证据就报告 **unknown**。
+3. 普通预览、配置、技能安装/升级或回滚都不重启。只有用户明确授权了**本次代理修复及一次正常重启**（或批准了包含此动作的方案），才使用下面的统一命令；已有该授权时不再就同一步骤重复提问，不绕过工具审批边界。
+4. 为本次授权生成一次 32 位十六进制 action ID，记录并在不确定/工具超时后继续保留同一 ID。不能换 ID 自动再重启，也不把本次授权当作以后随时重启的许可。
+
+```bash
+python -I "<skill-dir>/scripts/configure.py" --clash-dir "<Clash-data-dir>" --codex-exe "<Codex-executable>" --kind <desktop-kind> --desktop-action restart --action-id "<single-use-32-hex-id>" --startup-log-dir "<Codex-desktop-Logs-dir>" --apply
+```
+
+`<desktop-kind>` 为确认的 `electron` 或显式 `owl`，仅 Windows 桌面支持。可去掉 `--apply` 先预览，不会发生关闭或启动。命令统一保存代理/分流配置，然后执行独立的生命周期动作和新日志观察。
+
+- 核实完整路径、PID、父 PID、创建时间与唯一浏览器根身份，向其可见窗口发正常 `WM_CLOSE`。保存提示、拒绝退出、后台残留、身份不明/PID 复用、并发实例均停止，不强制结束进程、不点击保存提示、不关闭其他工具。
+- 关闭窗口后仍在托盘/后台不是正常退出完成：`close_timeout` 时停止，请用户从应用菜单/托盘“退出”，不强杀；没有新启动就标记网络 `not_checked`，不能说“没看到错误所以已恢复”。
+- 正常退出后只启动一次；早退、交接给未知新 PID或超时都停止，不再自动重启。不使用新的 user-data-dir 改变账号上下文。
+- 观察前捕获日志文件身份/EOF，只接受实际启动时刻之后且文件 PID 与新桌面 PID 匹配的事件。旧日志、无时间戳、轮转旧内容与非当前进程事件不能证明本次恢复。
+- 默认观察 60 秒，`--readiness-timeout` 可设 0–120 秒。输出仅允许的事件类别/计数，无原始日志或 URL 查询。
+- 分开报告：配置保存、正常退出/新进程、后端连接、网络错误是否在观察窗出现、Computer Use 能力。**未观测到超时不等于网络全部恢复，后端 ready 不等于 Computer Use ready。**
+- 目前已知格式没有可靠的 Computer Use readiness 事件，因此自动报告 unknown，需从应用能力或获准的最小只读测试确认；不能因此改权限、账号、许可、策略或强制打开安全功能。
+- 显式修复的退出码 **2** 表示配置已保存但启动/能力未完整验证；读结构化结果，保留成功配置的 transaction，不盲目回滚或重试。生命周期不是可逆配置事务，失败不抹掉已经成功保存的设置。
+
+## 6. 两项一起回滚
 
 保留统一执行返回的 transaction 路径；自定义状态目录时使用相同 `--state-dir`。
 

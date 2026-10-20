@@ -1,4 +1,7 @@
 import importlib.util
+import contextlib
+import io
+import time
 import json
 from pathlib import Path
 import socket
@@ -186,6 +189,83 @@ class CombinedConfigurationTests(unittest.TestCase):
         receipt.write_text('{"version":1,' + contents[1:], encoding='utf-8')
         with self.assertRaises(configure.ConfigurationError):
             configure.restore(self.clash, receipt, state_dir=self.state)
+
+    def desktop_configuration(self, apply=False):
+        logs = self.root / 'logs'
+        logs.mkdir(exist_ok=True)
+        actual_prepare = configure.proxy.prepare
+        def synthetic_plan(clash_dir, codex_exe, kind, state_dir, **kwargs):
+            # The lifecycle is fully mocked; keep the filesystem fixture CLI so
+            # this orchestration test also runs on non-Windows CI.
+            return actual_prepare(clash_dir, codex_exe, 'cli', state_dir, **kwargs)
+        with mock.patch.object(configure.proxy, 'prepare', side_effect=synthetic_plan):
+            return configure.configure(self.clash, self.exe, 'owl', state_dir=self.state,
+                                       apply=apply, desktop_action='restart', action_id='a' * 32,
+                                       log_dir=logs, readiness_timeout=0)
+
+    def test_default_apply_restore_and_explicit_preview_never_restart(self):
+        action = mock.Mock()
+        with mock.patch.dict(configure.proxy._runtime, {'repair_desktop': action}):
+            applied = self.run_configuration(apply=True)
+            configure.restore(self.clash, applied['transaction'], state_dir=self.state, apply=True)
+            preview = self.desktop_configuration(apply=False)
+        self.assertFalse(preview['applied'])
+        self.assertEqual(preview['desktop_action']['requested'], 'restart')
+        action.assert_not_called()
+
+    def test_configuration_failure_never_closes_desktop(self):
+        self.script.write_bytes(b'custom source')
+        action = mock.Mock()
+        with mock.patch.dict(configure.proxy._runtime, {'repair_desktop': action}):
+            with self.assertRaises(configure.clash.InstallError):
+                self.desktop_configuration(apply=True)
+        action.assert_not_called()
+
+    def test_explicit_repair_runs_once_and_computer_use_remains_independent(self):
+        action = mock.Mock(return_value={'status': 'started', 'pid': 99, 'started_at': time.time() + 1,
+                                        'close_attempted': True, 'start_attempted': True})
+        health = configure.startup.empty_report()
+        health['backend']['status'] = 'ready_reported'
+        with mock.patch.dict(configure.proxy._runtime, {'repair_desktop': action}), mock.patch.object(configure.startup, 'watch', return_value=health) as watch:
+            result = self.desktop_configuration(apply=True)
+        action.assert_called_once()
+        watch.assert_called_once()
+        self.assertEqual(result['startup']['backend']['status'], 'ready_reported')
+        self.assertEqual(result['startup']['computer_use']['status'], 'unknown')
+        self.assertTrue(Path(result['transaction']).is_file())
+
+    def test_refused_close_does_not_retry_or_rollback_saved_configuration(self):
+        action = mock.Mock(return_value={'status': 'close_timeout', 'pid': None, 'started_at': None,
+                                        'close_attempted': True, 'start_attempted': False})
+        with mock.patch.dict(configure.proxy._runtime, {'repair_desktop': action}), mock.patch.object(configure.startup, 'watch') as watch:
+            result = self.desktop_configuration(apply=True)
+        action.assert_called_once()
+        watch.assert_not_called()
+        self.assertTrue(result['applied'])
+        self.assertEqual(result['desktop']['status'], 'close_timeout')
+        self.assertEqual(result['startup']['network']['status'], 'not_checked')
+        self.assertTrue(self.script.read_bytes().startswith(configure.clash.HEADER))
+        self.assertTrue(Path(result['transaction']).is_file())
+
+    def test_bad_restart_options_fail_before_writes(self):
+        before = self.tree()
+        for kwargs in ({'desktop_action': 'restart', 'action_id': 'a' * 32},
+                       {'desktop_action': 'none', 'action_id': 'a' * 32}):
+            with self.assertRaises(configure.ConfigurationError):
+                self.run_configuration(apply=True, **kwargs)
+        self.assertEqual(self.tree(), before)
+        with self.assertRaises(configure.ConfigurationError):
+            configure.repair_options('owl', 'restart', 'invalid', None, 60)
+
+    def test_cli_partial_verification_returns_two_without_retry(self):
+        response = {'applied': True, 'desktop': {'status': 'started'},
+                    'startup': configure.startup.empty_report()}
+        args = ['--clash-dir', str(self.clash), '--codex-exe', str(self.exe), '--kind', 'owl',
+                '--desktop-action', 'restart', '--action-id', 'b' * 32, '--apply']
+        with mock.patch.object(configure, 'configure', return_value=response) as call, contextlib.redirect_stdout(io.StringIO()):
+            code = configure.main(args)
+        self.assertEqual(code, 2)
+        call.assert_called_once()
 
     def test_wrong_state_or_receipt_location_is_refused(self):
         result = self.run_configuration(apply=True)
