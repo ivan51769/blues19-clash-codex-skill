@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+node_modules/
+.env
+.env.*
+*.log
+*.tmp
+*.bak
+*.bin
+**/.clash-codex-backups/
+**/.package-manifest.json
+profiles/
+clash-data/
+backups/
+.DS_Store
+Thumbs.db

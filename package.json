@@ -1,0 +1,12 @@
+{
+  "name": "blues19-clash-codex-skill",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Safe country auto-selection and name-based <=1x filtering for Codex/OpenAI in Clash rule mode",
+  "license": "MIT",
+  "engines": {"node": ">=20"},
+  "scripts": {
+    "build": "node skills/clash-codex-optimizer/scripts/build.cjs",
+    "test": "node skills/clash-codex-optimizer/scripts/build.cjs --check && node --test tests/transform.test.cjs && python -I -m unittest discover -s tests -p test_*.py"
+  }
+}
