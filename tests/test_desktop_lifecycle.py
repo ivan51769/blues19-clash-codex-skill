@@ -281,10 +281,14 @@ class Win32AdapterTests(unittest.TestCase):
                 L.post_close(101, 10)
 
     def test_inventory_uses_fixed_readonly_fields_not_command_lines(self):
+        native_name = os.name
+        windows_os = mock.Mock(wraps=os)
+        windows_os.name = "nt"
         with mock.patch.object(L, "safe_path", return_value=mock.Mock(is_file=lambda: True)), \
-             mock.patch.object(L.os, "name", "nt"), \
+             mock.patch.object(L, "os", windows_os), \
              mock.patch.object(L.subprocess, "run", return_value=mock.Mock(stdout="[]")) as run:
             self.assertEqual(L.process_inventory(), [])
+            self.assertEqual(os.name, native_name)
             command = run.call_args.args[0][-1]
             self.assertIn("Get-CimInstance Win32_Process", command)
             self.assertIn("ParentProcessId", command)
