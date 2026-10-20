@@ -27,8 +27,9 @@ class InstallerTests(unittest.TestCase):
         self.bundle.write_bytes(self.content)
         self.target = self.root / "profiles" / "Script.js"
 
-    def install(self, apply=False):
-        return installer.install(self.root, apply=apply, bundle_path=self.bundle)
+    def install(self, apply=False, reviewed_sha256=None):
+        return installer.install(self.root, apply=apply, bundle_path=self.bundle,
+                                 reviewed_sha256=reviewed_sha256)
 
     def seed(self, data):
         self.target.parent.mkdir(exist_ok=True)
@@ -102,6 +103,70 @@ class InstallerTests(unittest.TestCase):
                 with self.assertRaises(installer.InstallError):
                     self.install(apply)
                 self.assertEqual(before, self.snapshot())
+
+    def test_reviewed_exact_custom_replacement_backed_up_and_restorable(self):
+        original = b'// private pre-public local script\r\ncustom();\r\n'
+        self.seed(original)
+        digest = installer.sha256(original)
+        before = self.snapshot()
+        with self.assertRaises(installer.InstallError):
+            self.install(True)
+        preview = self.install(reviewed_sha256=digest)
+        self.assertTrue(preview['reviewed_replacement'])
+        self.assertEqual(before, self.snapshot())
+        result = self.install(True, reviewed_sha256=digest)
+        self.assertTrue(result['reviewed_replacement'])
+        path, document = self.manifest(result)
+        self.assertEqual(document['previous_sha256'], digest)
+        self.assertEqual((path.parent / 'previous.bin').read_bytes(), original)
+        self.assertEqual(self.target.read_bytes(), self.content)
+        with self.assertRaises(installer.InstallError):
+            self.install(True, reviewed_sha256=digest)
+        installer.restore(self.root, path, apply=True)
+        self.assertEqual(self.target.read_bytes(), original)
+
+    def test_reviewed_hash_invalid_absent_or_mismatched_refuses_without_writes(self):
+        for exists in (False, True):
+            if exists:
+                self.seed(b'custom();')
+            for digest in ('', '0' * 63, 'g' * 64, 'A' * 64, '0' * 64,
+                           '../Script.js', 123, installer.sha256(b'')):
+                for apply in (False, True):
+                    with self.subTest(exists=exists, digest=digest, apply=apply):
+                        before = self.snapshot()
+                        with self.assertRaises(installer.InstallError):
+                            self.install(apply, reviewed_sha256=digest)
+                        self.assertEqual(before, self.snapshot())
+
+    def test_reviewed_concurrent_change_still_refused(self):
+        self.seed(b'custom reviewed bytes')
+        digest = installer.sha256(self.target.read_bytes())
+        original_verify = installer.verify_unchanged
+        calls = 0
+
+        def change_before_replace(*args):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                self.target.write_bytes(b'new unreviewed private bytes')
+            return original_verify(*args)
+
+        with mock.patch.object(installer, 'verify_unchanged', side_effect=change_before_replace):
+            with self.assertRaises(installer.InstallError):
+                self.install(True, reviewed_sha256=digest)
+        self.assertEqual(self.target.read_bytes(), b'new unreviewed private bytes')
+
+    def test_reviewed_cli_prints_marker_not_script(self):
+        original = b'private pre-public local script'
+        self.seed(original)
+        output, errors = io.StringIO(), io.StringIO()
+        with mock.patch.object(installer, 'BUNDLE', self.bundle):
+            with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                code = installer.main(['--clash-dir', str(self.root), '--apply',
+                                       '--reviewed-sha256', installer.sha256(original)])
+        self.assertEqual(code, 0)
+        self.assertTrue(json.loads(output.getvalue())['reviewed_replacement'])
+        self.assertNotIn(original.decode(), output.getvalue() + errors.getvalue())
 
     def test_exact_current_bundle_recognized_without_manifest(self):
         self.seed(self.content)

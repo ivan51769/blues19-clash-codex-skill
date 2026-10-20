@@ -8,6 +8,9 @@ node_modules/
 *.bak
 *.bin
 **/.clash-codex-backups/
+**/.clash-codex-transactions/
+**/.codex-proxy-backups/
+launcher-state/
 **/.package-manifest.json
 profiles/
 clash-data/

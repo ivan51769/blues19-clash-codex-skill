@@ -182,20 +182,27 @@ def atomic_write(clash_dir, target, data, expected):
             pass
 
 
-def install(clash_dir, *, apply=False, bundle_path=None):
+def install(clash_dir, *, apply=False, bundle_path=None, reviewed_sha256=None):
     target, backups = locations(clash_dir)
     bundle = load_bundle(bundle_path)
     previous = read_state(target)
     exists, old = previous
+    reviewed = reviewed_sha256 is not None
+    if reviewed:
+        if not isinstance(reviewed_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", reviewed_sha256):
+            raise InstallError("Reviewed SHA-256 must be exactly 64 lowercase hexadecimal characters.")
+        if not exists or sha256(old) != reviewed_sha256:
+            raise InstallError("Reviewed SHA-256 does not match an existing global script.")
     if exists:
         if has_header(old):
             safe = sha256(old) == sha256(bundle) or managed_by_manifest(old, target, backups)
         else:
             safe = is_default(old)
-        if not safe:
+        if not safe and not reviewed:
             raise InstallError("Refusing to overwrite a custom or edited global script.")
     if not apply:
-        return {"action": "install", "applied": False, "target": str(target)}
+        return {"action": "install", "applied": False, "target": str(target),
+                "reviewed_replacement": reviewed}
     verify_unchanged(clash_dir, target, previous)
     target.parent.mkdir(exist_ok=True)
     check_path(target.parent, directory=True)
@@ -223,7 +230,7 @@ def install(clash_dir, *, apply=False, bundle_path=None):
         os.fsync(stream.fileno())
     atomic_write(clash_dir, target, bundle, previous)
     return {"action": "install", "applied": True, "target": str(target),
-            "manifest": str(manifest_path)}
+            "manifest": str(manifest_path), "reviewed_replacement": reviewed}
 
 
 def restore(clash_dir, manifest_path, *, apply=False):
@@ -246,12 +253,16 @@ def main(argv=None):
     parser.add_argument("--clash-dir", required=True, help="Explicit existing Clash data directory")
     parser.add_argument("--apply", action="store_true", help="Write changes (default is read-only preview)")
     parser.add_argument("--restore", metavar="MANIFEST", help="Restore a verified installer backup")
+    parser.add_argument("--reviewed-sha256", metavar="SHA256",
+                        help="Allow replacement of exactly these reviewed existing script bytes (with backup)")
     args = parser.parse_args(argv)
     try:
+        if args.restore and args.reviewed_sha256 is not None:
+            raise InstallError("Reviewed SHA-256 is only supported for installation, not restore.")
         if args.restore:
             result = restore(args.clash_dir, args.restore, apply=args.apply)
         else:
-            result = install(args.clash_dir, apply=args.apply)
+            result = install(args.clash_dir, apply=args.apply, reviewed_sha256=args.reviewed_sha256)
         print(json.dumps(result, ensure_ascii=True))
         return 0
     except InstallError as error:

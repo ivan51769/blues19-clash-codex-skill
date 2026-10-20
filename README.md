@@ -6,6 +6,8 @@
 
 ## 功能
 
+- **一条命令同时配置两层代理**：检测 Clash HTTP/mixed 端口，安装分流扩展，并生成 Codex 专用代理启动入口。
+- **仅作用于 Codex 进程树**：不写系统环境变量，不改原应用/快捷方式；已验证的 Electron 桌面端同时使用 Chromium `--proxy-server`。
 - **跨订阅复用**：当前订阅每次经过全局扩展处理时重新筛选；不是将几个订阅合并。
 - **250 个国家/地区预设**：249 个 ISO 3166-1 代码加 XK；只显示有合格节点的组。
 - **排序置顶**：Codex 代理 → 日本自动 → 美国自动 → 新加坡自动 → 英国/香港/台湾 → 其他地区 → 原有组。
@@ -46,7 +48,7 @@ python -I blues19-clash-codex-skill/skills/clash-codex-optimizer/scripts/install
 | Claude Code | `~/.claude/skills/clash-codex-optimizer/` |
 | Codex | `~/.agents/skills/clash-codex-optimizer/` |
 
-只安装一个客户端时，将 `both` 改为 `claude` 或 `codex`。工具不会改设置、权限或其他技能，遇到已存在的不同内容会拒绝覆盖。
+只安装一个客户端时，将 `both` 改为 `claude` 或 `codex`。工具不会改设置、权限或其他技能。升级已安装且完整性未变的本技能时，增加 `--upgrade`：先备份旧技能，再安装新版本；自定义或被编辑的技能仍拒绝覆盖。
 
 新建会话后使用 `/clash-codex-optimizer`（以客户端的技能发现结果为准），或者说：
 
@@ -54,40 +56,59 @@ python -I blues19-clash-codex-skill/skills/clash-codex-optimizer/scripts/install
 
 技能安装与 Clash 配置安装是两件事；安装技能**不会自动修改网络配置**。
 
-## 直接安装 Clash 全局扩展
+## 一次配置：Clash 分流 + Codex 代理端口
 
-1. 在 Clash Verge 中确认数据目录。Windows 常见位置是 `%APPDATA%/io.github.clash-verge-rev.clash-verge-rev`；其他平台从应用中打开配置目录确认。
-2. 使用真实目录替换下面的 `<Clash-data-dir>`。命令从仓库根目录运行，默认只读。
+1. 在 Clash Verge 中确认数据目录，并启动 Clash。Windows 常见位置是 `%APPDATA%/io.github.clash-verge-rev.clash-verge-rev`；其他平台从应用中打开配置目录确认。
+2. 确认真实 Codex 可执行文件与类型：CLI 使用 `--kind cli`；Windows Electron 桌面程序使用 `--kind electron`，工具会检查相邻的 Electron 资源。不要误选 `app-server` 后端来当桌面程序，也不使用 Store 启动别名或 `.cmd` shim 代替真实程序。
+3. 从仓库根目录运行统一入口，默认只读预览**两项**配置：
 
 ```bash
-python -I skills/clash-codex-optimizer/scripts/install.py --clash-dir "<Clash-data-dir>"
+python -I skills/clash-codex-optimizer/scripts/configure.py --clash-dir "<Clash-data-dir>" --codex-exe "<Codex-executable>" --kind electron
+```
+
+一次应用两项，不需要用户分开执行端口和分流命令：
+
+```bash
+python -I skills/clash-codex-optimizer/scripts/configure.py --clash-dir "<Clash-data-dir>" --codex-exe "<Codex-executable>" --kind electron --apply
+```
+
+CLI 将 `electron` 改为 `cli`。如果桌面资源中有 `owl-electron-app.json` 且 runtimeName 为 `owl`，必须显式使用 `--kind owl`；它会请求 Chromium 代理参数，但 **Owl 的参数支持和 GUI 路由仍需重启后实际验证**，不能据此宣称是标准 Electron。已运行桌面实例会阻止再次启动；不会强制关闭它。版本化程序路径在应用更新后失效时需重新配置。
+
+可用 `--proxy-port` 指定已确认的本地 HTTP/mixed 端口；默认读取 Clash `config.yaml` 的顶层 `mixed-port`，否则使用 HTTP `port`。不会误用 `socks-port` 或 `external-controller`，不输出配置全文。端口未监听时应用前就失败；TCP 检测只证明端口开放，不能证明该进程一定是代理或服务可用。
+
+统一入口先全部预检，再安装扩展与专用启动配置。若第二项失败，会尝试回滚第一项并明确报告回滚结果，不把半配置说成成功。
+
+### 应用后怎么启动
+
+- 结果会返回专用启动入口：Windows 为 `launch-codex.cmd`，CLI 的其他系统为 `launch-codex.sh`。它们存放在独立的用户级状态目录，不在仓库或订阅目录中。Windows 默认是 `~/.clash-codex-optimizer/`，避免从 MSIX 打包助手配置时，新建 LocalAppData 目录被虚拟化、导致从资源管理器启动找不到文件。
+- **以后从这个专用入口启动 Codex**。原图标、原快捷方式、系统/用户环境变量不会被修改。
+- 启动器只对子进程设置 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 及小写版本；将子进程的 `NO_PROXY` 限定为 loopback，避免继承 `*` 或 OpenAI 域名而绕过代理。
+- 已验证的 Electron 桌面端还会带上 `--proxy-server`，覆盖只设置环境变量但 Chromium 前端未走代理的情况。
+- 正在运行的 Electron/Owl 实例可能忽略新参数。启动器会检查并拒绝复用已运行实例；请先正常退出，再从专用入口打开。**不会强制杀进程，也不会声称配置能热更新到当前实例**。
+- Windows `.cmd` 是启动专用，不转发额外 CLI 参数；需要参数时直接用 Python 执行状态目录中的 `launch_codex.py`。为支持中文路径，`.cmd` 会将其所附控制台切到 UTF-8 代码页 65001，不修改持久系统设置。
+- 在 Clash Verge 中重新应用订阅/全局扩展，选择**规则模式**；在 **Codex 代理**中选择国家。最后在 Codex 中 Retry，确认工作区实际恢复。
+
+工具不会改账号、认证、原程序、原快捷方式、系统代理、TUN、节点或运行时 YAML，也不会自动重启应用。自定义全局脚本仍拒绝静默覆盖。对已经人工审查的旧脚本，可用 `--reviewed-sha256 <exact-hash>` 明确批准一次内容完全匹配的迁移；哈希不同就停止，并且仍先备份。**不要把该参数当作跳过审查的 force 开关。**
+
+### 两项一起回滚
+
+统一执行返回的 transaction 路径仅保存在本地。使用相同 Clash 目录与 `--state-dir`（未自定义时可省略）：
+
+```bash
+python -I skills/clash-codex-optimizer/scripts/configure.py --clash-dir "<Clash-data-dir>" --restore "<transaction-path>"
 ```
 
 ```bash
-python -I skills/clash-codex-optimizer/scripts/install.py --clash-dir "<Clash-data-dir>" --apply
+python -I skills/clash-codex-optimizer/scripts/configure.py --clash-dir "<Clash-data-dir>" --restore "<transaction-path>" --apply
 ```
 
-3. 在 Clash Verge 中重新应用当前订阅/全局扩展，并使用**规则模式**。
-4. 在“代理”页面找到 **Codex 代理**，选择日本自动、美国自动、新加坡自动等组。
-5. 在 Codex 中 Retry，验证工作区实际恢复。仅文件保存或 API 返回 401 不能证明登录与工作区正常。
+会先校验两项备份与当前内容。脚本/启动器若被修改，拒绝覆盖，避免丢失新修改。回滚后仍需 Clash 重新应用配置，并在正常退出后从用户希望使用的入口重开 Codex。
 
-安装工具**仅写 `profiles/Script.js`**，不读取订阅 YAML、不修改节点、模式、TUN、系统代理或运行时 YAML，也不会重启应用。它保护已有自定义脚本；如果拒绝安装，请人工审查并组合，不要删除原脚本来绕过保护。
+### 高级：只安装扩展
 
-请求必须先进入 Clash（例如客户端已正确使用本地代理）。仅增加 `PROCESS-NAME` 规则不能捕获本来绕过代理的直连请求。
+需要兼容旧流程时仍可单独使用 `scripts/install.py`；此入口**不会配置 Codex 端口**。它仅写 `profiles/Script.js`，备份在 `profiles/.clash-codex-backups/`。公共技能默认使用上面的统一入口。
 
-### 回滚
-
-应用结果会返回一个本地备份 manifest 路径。先预览：
-
-```bash
-python -I skills/clash-codex-optimizer/scripts/install.py --clash-dir "<Clash-data-dir>" --restore "<manifest-path>"
-```
-
-```bash
-python -I skills/clash-codex-optimizer/scripts/install.py --clash-dir "<Clash-data-dir>" --restore "<manifest-path>" --apply
-```
-
-备份保存在 `profiles/.clash-codex-backups/`，**不要上传**。安装后脚本若被修改，回滚会拒绝覆盖，避免抹掉新修改。回滚后仍需让 Clash 重新应用配置。
+所有本地状态、备份、transaction 和程序路径**都不要上传**。
 
 ## 自定义参数
 
@@ -120,6 +141,7 @@ node skills/clash-codex-optimizer/scripts/build.cjs
 - 全局脚本命名冲突、自定义脚本、被修改的管理组会明确拒绝；不静默覆盖用户分流。
 - 命名不明确的节点会进入“其他地区自动”；可手动排除。只支持文档与测试列出的倍率写法，不识别订阅未公布的账单倍率。
 - 当前手工联网验证环境为 Windows + Clash Verge/Mihomo。公开版有额外所有权/冲突保护；其自动化测试使用虚构数据，不宣称在所有系统/应用版本上完成联网验证。
+- 桌面启动器当前仅支持 Windows 的已识别 Electron/Owl 包；其他系统仅支持 CLI，桌面模式在预检阶段就会拒绝。
 - Python 工具拒绝 symlink/junction/reparse-point 路径；需要链接目录的用户请人工集成。
 - 本项目不改变服务地区限制，不保证特定国家的节点可使用 OpenAI。
 
@@ -131,7 +153,7 @@ node skills/clash-codex-optimizer/scripts/build.cjs
 npm test
 ```
 
-测试覆盖倍率、250 个地区代码、排序、空组、原规则保留、幂等性、名称冲突、订阅变化，以及临时目录中的预览/应用/备份/回滚/并发修改保护。Windows 不具备创建符号链接权限时，相应测试会显式跳过。
+测试覆盖倍率、250 个地区代码、排序、空组、原规则保留、幂等性、名称冲突、订阅变化、端口检测、子进程环境、运行中桌面拒绝启动，以及临时目录中的统一应用/回滚、恢复世代绑定、旧技能升级和并发修改保护。Windows 不具备创建符号链接权限时，相应测试会显式跳过。
 
 仓库只包含代码、国家表、文档和虚构测试。**请勿提交订阅链接、token、节点密码、控制器 secret、运行时配置、备份、连接日志或用户专用路径。**
 

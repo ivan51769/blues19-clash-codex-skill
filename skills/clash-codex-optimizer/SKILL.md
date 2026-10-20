@@ -1,95 +1,94 @@
 ---
 name: clash-codex-optimizer
-description: Diagnose Codex connectivity that only works in Clash global mode, install safe global country auto-selection groups, filter node-name multipliers above 1x, prioritize Japan/US/Singapore, and back up or restore Clash Verge extensions. Use for Codex workspace-settings connection errors, Clash rule-mode routing, country switching, and low-multiplier automatic node selection.
+description: Configure Codex proxy ports and Clash country routing together. Diagnose global-mode-only connectivity, detect local HTTP/mixed ports, create a process-scoped Codex proxy launcher, install country auto-selection groups with <=1x name-label filtering, and back up or restore both. Use for workspace-settings errors, Codex proxy settings, country switching, and rule-mode routing.
 ---
 
-# Clash / Codex 国家自动分流优化
+# Codex 代理端口 + Clash 国家分流：一起执行
 
-为 Clash Verge 的**全局扩展脚本**提供国家选择、低倍率筛选和 Codex/OpenAI 分流。不使用模型 API、不需要账号凭据，也不安装常驻进程、hooks 或权限规则。
+默认使用**统一入口**同时处理两层设置：
+1. Codex → Clash 本地 HTTP/mixed 代理端口；
+2. Clash → 国家自动组与低倍率节点。
 
-## 先说明边界
+不是只添加规则就声称 Codex 已走代理。也不让已明确要求配置的用户再分别执行两个安装命令。仅需 Python 3.10+ 标准库，不使用模型 API、不装常驻服务、hooks 或权限规则。
 
-- 本技能不保证服务可用性，不绕过服务的账号、地区或访问限制。只优化用户有权管理的本地代理配置。
-- 倍率来自**节点名称**，不验证实际计费。默认保留未标倍率节点；需要严格限制时将 `keepUnmarked` 改为 `false`。
-- 国旗、国家名、城市名只是出口位置线索；延迟最低不代表带宽最大或 OpenAI 可用。
-- 域名规则作用于进入 Clash 的**所有 OpenAI/ChatGPT 流量**，不限 Codex。可配置 `routeDomains: false`，但单独进程规则依赖进程识别。
-- 请求必须先进入 Clash。仅增加规则不会让绕过 Clash 的直连流量自动被捕获；不要擅自开启 TUN、系统代理或全局模式。
-- 支持展开为 `config.proxies` 的订阅；provider-only 配置会明确拒绝，需要人工集成。
+## 必须遵守的边界
 
-## 工作流程
+- 仅优化用户有权管理的本地配置，不保证服务可用性，不绕过账号、地区或访问限制。
+- 倍率来自**节点名称**，不是账单验证；默认保留未标倍率节点，严格模式改为 `keepUnmarked: false`。国家标签不保证真实出口；延迟最低不等于带宽最大或 OpenAI 可用。
+- 域名规则影响进入 Clash 的**所有 OpenAI/ChatGPT 流量**，不限 Codex。`routeProcess` 默认只匹配 `codex.exe` 后端，不保证匹配使用其他文件名的 GUI。
+- 不写用户/系统环境变量、注册表、账号或认证文件，不改原 EXE/快捷方式，不擅自开 TUN、系统代理或全局模式。
+- 专用启动器只影响新启动的 Codex 及其子进程。配置已生成，不等于运行中的桌面实例已生效。
+- 仅支持展开为 `config.proxies` 的订阅；provider-only 需要人工集成。
 
-### 1. 只读诊断
+## 1. 只读诊断与客户端识别
 
-1. 询问/确认用户想修复的症状、国家偏好和倍率上限；默认是日本、上限 1 倍。
-2. 找到 Clash Verge 数据目录，确认 `profiles/Script.js` 是否为默认模板、自定义脚本或本技能管理的版本。不要读取登录凭据；不要输出完整订阅、节点密码、控制器 secret 或连接日志。
-3. 根据用户允许的范围检查规则/全局模式、Codex 是否使用本地代理，以及现有策略组。全局能用而规则模式失败是分流线索，不是单凭截图即可确认的根因。
-4. 区分保存扩展脚本、Clash 重新生成配置、实际路由成功三种状态，不把文件写入成功说成应用已恢复。
+先定位**本 SKILL.md 所在目录**，下文记为 `<skill-dir>`。
 
-Windows 常见数据目录为 `%APPDATA%/io.github.clash-verge-rev.clash-verge-rev`。其他平台让用户从 Clash Verge 打开配置目录并确认；不要猜测其他用户的主目录。
+1. 确认 Clash 数据目录、用户国家偏好和倍率上限；默认日本、上限 1 倍。Windows 常见目录是 `%APPDATA%/io.github.clash-verge-rev.clash-verge-rev`，其他平台从应用打开目录确认。
+2. 仅检查必要的顶层端口配置、脚本状态和程序身份，不输出完整配置、订阅、secret、账号凭据或进程命令行。
+3. 确认 **实际 Codex 可执行文件**：不能把 `app-server` 后端、用量悬浮条、npm `.cmd/.ps1` shim 当作桌面入口。Windows MSIX 应优先参考包清单的 Application Executable，而非猜一个 `Codex.exe`；实际入口可能叫 `ChatGPT.exe`。
+4. 明确类型：`cli`、`electron`、`owl`。Electron 资源存在不一定代表标准 Electron：若有 `resources/owl-electron-app.json` 且 runtimeName 为 owl，使用显式 `owl` 兼容模式并说明代理参数未验证。不要把 Owl 当作已验证的 Electron。
+5. 出现多客户端歧义时询问用户，不猜版本最新的后台进程。版本化 MSIX 路径更新后若失效，应重新配置，不擅自换到另一个程序。
+6. 检查现有全局脚本是否默认/本技能管理；自定义或被修改的文件不能静默覆盖。
 
-### 2. 预览安装
-
-先定位**本 SKILL.md 所在目录**，下文用 `<skill-dir>` 表示该目录。安装工具仅需 Python 3.10+ 标准库。
-
-```bash
-python -I "<skill-dir>/scripts/install.py" --clash-dir "<Clash-data-dir>"
-```
-
-默认只读预览，不创建目录/备份，不修改订阅、运行时 YAML、模式或系统代理。
-
-- 默认空脚本可以应用；自定义脚本、名称冲突或被编辑的管理版本不可静默覆盖。
-- 自定义脚本需要人工审查并组合，不使用 `--force`，也不要求删除现有脚本。
-- 如果用户需要调整参数，在可信的脚本副本中修改顶端 `CODEX_OPTIONS`，解释差异并验证后由用户在 Clash 界面人工合并。不要为绕过完整性保护而伪造安装记录。
-
-### 3. 明确获准后应用
-
-用户要求“帮我配置/安装”已构成该范围授权；只有询问原理时不要直接写入。
+## 2. 一次预览两项
 
 ```bash
-python -I "<skill-dir>/scripts/install.py" --clash-dir "<Clash-data-dir>" --apply
+python -I "<skill-dir>/scripts/configure.py" --clash-dir "<Clash-data-dir>" --codex-exe "<Codex-executable>" --kind <client-kind>
 ```
 
-它只写 `profiles/Script.js`，原文件字节与清单保存在该目录下 `.clash-codex-backups/` 的唯一备份子目录中。记录命令返回的 manifest 路径；备份只保留本地，不能提交到 Git 或上传。
+`<client-kind>` 替换为 `cli`、`electron` 或 `owl`。必要时增加 `--proxy-port <confirmed-port>`，只接受本地 HTTP/mixed 代理端口，不接受 SOCKS-only/控制器端口。默认从 Clash `config.yaml` 的顶层 `mixed-port`，否则 HTTP `port` 检测，并验证 loopback 监听；TCP 可连不等于已确认代理协议或服务可用。
 
-若需要切回规则模式、重启应用或更改系统代理，单独说明并获取相应授权；安装工具不会自动执行这些操作。
+预览不写入、不启动 Codex。任何一项预检失败都不应用另一项。
 
-### 4. 在 Clash 中启用与验证
+## 3. 用户要求执行时，两项一起应用
 
-1. 让 Clash Verge 重新应用当前订阅/全局扩展脚本，保持用户批准的规则模式。不要覆盖应用管理的运行时 YAML。
-2. 查看代理组顺序：`Codex 代理 → 日本自动 → 美国自动 → 新加坡自动 → 其他国家/地区 → 原有组`。无合格节点的国家不会显示。
-3. 在 `Codex 代理` 中选择国家，自动组按 HTTPS 延迟选择节点；默认每 300 秒检测，50ms 容差。
-4. 检查匹配请求的规则与代理链。进程识别失败时不能宣称进程规则已验证。
-5. 网络可达与账号功能分别验证：无凭据 API 返回 401 可以证明抵达服务，但不是登录成功；403/Cloudflare challenge 不是应用恢复证据。最后让用户在 Codex 中 Retry/重开并确认工作区加载。
-6. 不自动关闭现有连接、不强制重启，不发真实聊天请求或收费 API 测试。
-
-### 5. 回滚
-
-先预览，再确认应用：
+用户已要求“帮我配置/一起执行”即构成该范围授权；只有询问原理时仍只预览。不要拆成两次让用户手工执行。
 
 ```bash
-python -I "<skill-dir>/scripts/install.py" --clash-dir "<Clash-data-dir>" --restore "<manifest-path>"
+python -I "<skill-dir>/scripts/configure.py" --clash-dir "<Clash-data-dir>" --codex-exe "<Codex-executable>" --kind <client-kind> --apply
+```
+
+统一入口复用安全安装器，为 Clash 脚本和 Codex 专用启动配置分别备份，并返回统一 transaction。第二项出错时尝试补偿回滚第一项；若并发修改导致无法安全回滚，要明确报告部分状态与恢复记录，不能宣称绝对原子性。
+
+- 不改运行时 YAML、模式、TUN、系统代理或账号。
+- 不使用无条件 force。只有经过人工内容审查的旧脚本，才可用 `--reviewed-sha256 <exact-hash>` 显式批准一次完全一致的迁移，仍先备份并立即复核；不得现算未知脚本哈希就自动当作审查授权。
+- 状态与备份保存在仓库外本机目录，绝不提交 Git。可用 `--state-dir` 明确指定支持的本地状态目录。
+- 修改选项时审查可信脚本副本并验证，不伪造旧清单绕过保护。
+
+## 4. 启动与实际验证
+
+1. 从命令返回的专用入口启动：Windows 为 `launch-codex.cmd`，CLI 其他系统为 `launch-codex.sh`。原图标/快捷方式不会改变，以后继续使用原图标可能仍不带这份配置。
+2. 启动器只在子进程设置 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 和小写版本；将子进程的 `NO_PROXY` 设为 loopback，避免继承外部直连绕过列表。父进程和全系统环境不变。
+3. 标准 Electron 桌面还设置 `--proxy-server`；Owl 显式兼容模式只代表请求该 Chromium 参数，**必须实际验证**，不能声称 GUI 支持已确认。
+4. 如同路径桌面程序已经运行，启动器会拒绝复用旧实例。让用户保存工作并正常退出后再启动，不强制杀进程、不用新 user-data-dir 偷换账号上下文。
+5. 在 Clash 中重新应用订阅/全局扩展，使用用户批准的规则模式。查看组顺序：`Codex 代理 → 日本自动 → 美国自动 → 新加坡自动 → 其他地区 → 原有组`，在 Codex 代理里切国家。
+6. 分别验证后端代理环境、GUI 请求代理链与 Codex 工作区加载。无凭据 API 的 401 只能证明抵达服务；403/challenge 不是恢复证据。不自动发真实聊天/收费 API 请求。
+7. 报告四个不同状态：文件已配置、Clash 已重新应用、Codex 已从新入口启动、工作区已恢复。无法不重启就完成的验证明确写出。
+
+## 5. 两项一起回滚
+
+保留统一执行返回的 transaction 路径；自定义状态目录时使用相同 `--state-dir`。
+
+```bash
+python -I "<skill-dir>/scripts/configure.py" --clash-dir "<Clash-data-dir>" --restore "<transaction-path>"
 ```
 
 ```bash
-python -I "<skill-dir>/scripts/install.py" --clash-dir "<Clash-data-dir>" --restore "<manifest-path>" --apply
+python -I "<skill-dir>/scripts/configure.py" --clash-dir "<Clash-data-dir>" --restore "<transaction-path>" --apply
 ```
 
-只接受目标一致且哈希校验通过的备份。若安装后脚本被修改，回滚会拒绝覆盖，交由用户人工比较。回滚后同样需在 Clash 中重新应用配置。
+两项先验证完整性；若文件被编辑，拒绝覆盖并让用户人工比较。回滚不会杀进程，Clash 仍需重新应用，Codex 仍需正常退出后从希望使用的入口重开。
 
-## 默认策略
+## 策略与高级入口
 
-| 参数 | 默认 |
-|---|---|
-| 最高可识别倍率 | 1；代码不允许上限高于 1 |
-| 未标倍率 | 保留，可选排除 |
-| 首选国家 | JP；缺失时默认 REJECT，用户可手选其他现有国家 |
-| 排序 | JP、US、SG、GB、HK、TW，然后其他地区 |
-| 测速 | `https://www.gstatic.com/generate_204`；300 秒；50ms 容差 |
-| 适用范围 | 所有经过全局扩展处理的当前订阅；不合并多个订阅的节点 |
-| 无合格节点 | 不显示空国家组，不以高倍率节点或 DIRECT 兜底 |
+- 国家表：249 个 ISO 3166-1 国家/地区代码加 XK；只显示有合格节点的组，不合并多个订阅。
+- 最高倍率 1；未标倍率默认保留可配置；首选 JP 不可用时默认 REJECT，不用高倍率或 DIRECT 兜底。
+- 自动测速：HTTPS 204，300 秒、50ms 容差；只代表目标连通延迟。
+- 原组与原规则保留，新增规则置顶；名称冲突明确拒绝。
+- `scripts/install.py` 仍是只安装 Clash 扩展的高级入口，**不是默认执行流程**。
+- 更新用户级技能使用 `scripts/install_skill.py --target both --upgrade --apply`：先校验旧安装清单、备份，再更新；被编辑/来源不明的技能拒绝覆盖。
 
-原有分组与规则保留，新增规则置顶，因此会改变 OpenAI/ChatGPT 匹配优先级。名称冲突时明确拒绝，不删除用户已有同名组。支持 249 个 ISO 3166-1 国家/地区代码及 XK 预设，不把它们称为 250 个主权国家。
+## 发布隐私
 
-## 发布与分享
-
-公开内容仅限本技能的源码、说明、国家表和虚构测试。不得附带真实订阅地址、token、代理认证、节点配置、控制器 secret、运行时 YAML、备份、本机日志、截图或用户专用路径。不要将本地 Clash 数据目录整体提交到仓库。
+只公开源码、说明、国家表和虚构测试。不要附带本机路径、订阅链接、token、代理认证、节点配置、控制器 secret、启动状态、transaction、运行时 YAML、备份、日志或截图。不得整体提交 Clash/Codex 数据目录。
