@@ -1,8 +1,8 @@
 {
   "name": "blues19-clash-codex-skill",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
-  "description": "Safe country auto-selection and name-based <=1x filtering for Codex/OpenAI in Clash rule mode",
+  "description": "Windows Store Codex scoped proxy and quota checks, with optional Clash country routing",
   "license": "MIT",
   "engines": {"node": ">=20"},
   "scripts": {

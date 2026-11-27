@@ -27,6 +27,8 @@ FILES = (
     'scripts/codex_proxy.py',
     'scripts/startup_check.py',
     'assets/launch_codex.py',
+    'assets/start-windows-store-codex.ps1',
+    'references/windows-store.md',
 )
 
 
