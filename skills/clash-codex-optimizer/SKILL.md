@@ -1,15 +1,19 @@
 ---
 name: clash-codex-optimizer
-description: Configure Codex proxy ports and Clash country routing together; diagnose desktop and Computer Use startup problems without false readiness claims. Detect HTTP/mixed ports, install process-scoped launchers and <=1x country groups, and optionally perform one authorized graceful restart with fresh-log checks. Use for workspace errors, Computer Use initialization skipped, proxy settings, country switching, and rule-mode routing.
+description: 修复 Windows Store Codex 桌面启动报错（Connection for host ID local not found），用 Clash 规则模式和仅进程代理让 Codex 联网及刷新额度，无需全局模式、系统代理或 TUN。也支持明确要求的 Codex CLI、非 Store 桌面代理、国家/倍率分流和 Computer Use 初始化诊断。
 ---
 
-# Codex 代理端口 + Clash 国家分流：一起执行
+# Codex 启动、额度与 Clash 规则分流
 
-默认使用**统一入口**同时处理两层设置：
-1. Codex → Clash 本地 HTTP/mixed 代理端口；
-2. Clash → 国家自动组与低倍率节点。
+## 先选择最小改动路径
 
-不是只添加规则就声称 Codex 已走代理。也不让已明确要求配置的用户再分别执行两个安装命令。仅需 Python 3.10+ 标准库，不使用模型 API、不装常驻服务、hooks 或权限规则。
+- **Windows Store Codex 启动报错、只能开全局才联网或看不到额度**：默认走 [Windows Store 启动、规则分流与额度](references/windows-store.md)。先区分本地 App Server 和远程网络；有证据需要代理时，用 [专用启动器](assets/start-windows-store-codex.ps1) 绑定已确认的 loopback HTTP/mixed 端口，在当前订阅复用可用组；不默认改全局扩展或启用国家筛选。
+- **明确要建国家自动组、按名称过滤倍率、配置非 Store Electron/Owl 或 CLI**：走下面的原有统一入口。若这条路径不需要，不替换已有 Clash 全局脚本。
+- **Computer Use 初始化问题**：仍按第 5 节分层诊断；本地连接可用不代表能力就绪。无论走哪条路径，分别验证窗口、代理、模型回复和额度新鲜度；未执行的项目写为未验证。
+
+## 高级路径：Codex 代理端口 + Clash 国家分流
+
+此路径的统一入口同时处理 Codex → Clash 本地 HTTP/mixed 端口、Clash → 国家自动组与低倍率节点。仅需 Python 3.10+ 标准库，不装常驻服务、hooks 或权限规则。
 
 ## 必须遵守的边界
 

@@ -1,8 +1,8 @@
 # Clash Codex Optimizer · 公共技能
 
-让 Codex/OpenAI 请求在 **Clash 规则模式**下按国家自动选择低延迟节点，并从这些自动组中排除名称标注 **超过 1 倍**的节点。
+修复 Windows Store Codex 桌面启动报错，让 Codex 在 **Clash 规则模式**下联网和刷新额度，保持系统代理和 TUN 关闭。默认复用当前订阅的现有代理组，不替换全局脚本；仍支持按国家自动选择低延迟节点及名称倍率过滤。
 
-这是标准 `SKILL.md` 技能包，也可以不使用 AI 助手，直接将附带脚本安装到 Clash Verge 的全局扩展。没有模型 API、后台服务、账号采集、telemetry、权限提升或自动 TUN 设置。
+这是标准 `SKILL.md` 技能包，也可不使用 AI 助手，按 [Windows Store 配置指南](skills/clash-codex-optimizer/references/windows-store.md) 使用独立启动器。配置不需要模型 API、账号采集、后台服务、遥测、权限提升或自动 TUN 设置。
 
 ## 功能
 
@@ -53,11 +53,20 @@ python -I blues19-clash-codex-skill/skills/clash-codex-optimizer/scripts/install
 
 新建会话后使用 `/clash-codex-optimizer`（以客户端的技能发现结果为准），或者说：
 
-> 用 clash-codex-optimizer 检查 Codex 只有全局代理才能连接的问题；预设国家自动组，排除超过 1 倍节点，默认日本，先预览再应用。
+> 用 clash-codex-optimizer 修复 Windows Store Codex 启动报错。优先保留现有 Clash 订阅，验证规则模式下能启动、使用模型和刷新额度，不开系统代理或 TUN。
 
 技能安装与 Clash 配置安装是两件事；安装技能**不会自动修改网络配置**。
 
-## 一次配置：Clash 分流 + Codex 代理端口
+## 默认：Windows Store Codex 不开全局也能工作
+
+1. 先区分本地 App Server 报错和 OpenAI 网络故障，再确认 Clash 的本机 HTTP/mixed 端口。
+2. 用当前订阅和已有代理组检查或补齐 OpenAI 域名规则，并确认实际命中；不覆盖全局脚本，也不启用国家筛选。
+3. 从 [Store 专用启动器](skills/clash-codex-optimizer/assets/start-windows-store-codex.ps1) 启动。脚本会在每次启动时识别 Store 安装路径，只给 Codex 和其子进程设置代理。
+4. 在系统代理与 TUN 关闭、Clash 规则模式下，分别验证窗口、模型请求和实时额度；不要把旧额度缓存算作验证通过。
+
+详见 [Windows Store 配置及回退指南](skills/clash-codex-optimizer/references/windows-store.md)。
+
+## 高级：国家分流 + CLI 或非 Store 桌面代理
 
 1. 在 Clash Verge 中确认数据目录，并启动 Clash。Windows 常见位置是 `%APPDATA%/io.github.clash-verge-rev.clash-verge-rev`；其他平台从应用中打开配置目录确认。
 2. 确认真实 Codex 可执行文件与类型：CLI 使用 `--kind cli`；Windows Electron 桌面程序使用 `--kind electron`，工具会检查相邻的 Electron 资源。不要误选 `app-server` 后端来当桌面程序，也不使用 Store 启动别名或 `.cmd` shim 代替真实程序。
@@ -107,7 +116,7 @@ python -I skills/clash-codex-optimizer/scripts/configure.py --clash-dir "<Clash-
 
 ### 高级：只安装扩展
 
-需要兼容旧流程时仍可单独使用 `scripts/install.py`；此入口**不会配置 Codex 端口**。它仅写 `profiles/Script.js`，备份在 `profiles/.clash-codex-backups/`。公共技能默认使用上面的统一入口。
+需要兼容旧流程时仍可单独使用 `scripts/install.py`；此入口**不会配置 Codex 端口**。它仅写 `profiles/Script.js`，备份在 `profiles/.clash-codex-backups/`。如果明确要配置国家自动组及 Codex 专用入口，优先用本节的统一入口。
 
 所有本地状态、备份、transaction 和程序路径**都不要上传**。
 
@@ -173,7 +182,7 @@ node skills/clash-codex-optimizer/scripts/build.cjs
 - 全局脚本命名冲突、自定义脚本、被修改的管理组会明确拒绝；不静默覆盖用户分流。
 - 命名不明确的节点会进入“其他地区自动”；可手动排除。只支持文档与测试列出的倍率写法，不识别订阅未公布的账单倍率。
 - 当前手工联网验证环境为 Windows + Clash Verge/Mihomo。公开版有额外所有权/冲突保护；其自动化测试使用虚构数据，不宣称在所有系统/应用版本上完成联网验证。
-- 桌面启动器当前仅支持 Windows 的已识别 Electron/Owl 包；其他系统仅支持 CLI，桌面模式在预检阶段就会拒绝。
+- Store 专用启动器需要 Windows PowerShell 和已注册 Codex Store 执行别名；旧统一入口的桌面模式需要 Windows 上已识别的 Electron/Owl 包，其他系统仅支持 CLI。
 - Python 工具拒绝 symlink/junction/reparse-point 路径；需要链接目录的用户请人工集成。
 - 本项目不改变服务地区限制，不保证特定国家的节点可使用 OpenAI。
 

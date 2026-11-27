@@ -63,6 +63,14 @@ class SkillInstallTests(unittest.TestCase):
             self.assertEqual((target / 'SKILL.md').read_text(encoding='utf-8'), 'synthetic SKILL.md')
             self.assertEqual(self.run_install(client, apply=True)['status'], 'already-current')
 
+    def test_real_package_includes_store_guide_and_launcher(self):
+        target = Path(installer.install_skill(self.home, 'codex', apply=True)['target'])
+        guide = target / 'references/windows-store.md'
+        asset = target / 'assets/start-windows-store-codex.ps1'
+        self.assertIn('(references/windows-store.md)', (target / 'SKILL.md').read_text(encoding='utf-8'))
+        self.assertIn('(../assets/start-windows-store-codex.ps1)', guide.read_text(encoding='utf-8'))
+        self.assertEqual(asset.read_bytes(), (installer.SOURCE / asset.relative_to(target)).read_bytes())
+
     def test_existing_custom_skill_is_not_overwritten(self):
         target = self.home / '.agents' / 'skills' / installer.NAME
         target.mkdir(parents=True)
